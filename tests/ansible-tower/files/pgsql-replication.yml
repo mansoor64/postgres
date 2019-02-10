@@ -22,41 +22,6 @@
       tags:
         - always
 
-    - import_role:
-        name: repos_el
-      when: ansible_os_family == "RedHat"
-
-    - import_role:
-        name: packages_el
-      vars:
-        packages_el_install_tower: false
-        packages_el_install_postgres: true
-      when: ansible_os_family == "RedHat"
-
-    - import_role:
-        name: postgres
-      vars:
-        postgres_allowed_ipv4: "0.0.0.0/0"
-        postgres_allowed_ipv6: "::/0"
-        postgres_username: "{{ pg_username }}"
-        postgres_password: "{{ pg_password }}"
-        postgres_database: "{{ pg_database }}"
-        max_postgres_connections: 1024
-        postgres_shared_memory_size: "{{ (ansible_memtotal_mb*0.3)|int }}"
-        postgres_work_mem: "{{ (ansible_memtotal_mb*0.03)|int }}"
-        postgres_maintenance_work_mem: "{{ (ansible_memtotal_mb*0.04)|int }}"
-      tags:
-        - postgresql_database
-
-    - import_role:
-        name: firewall
-      vars:
-        firewalld_http_port: "{{ nginx_http_port }}"
-        firewalld_https_port: "{{ nginx_https_port }}"
-      tags:
-        - firewall
-      when: ansible_os_family == 'RedHat'
-
 - name: Configure PSQL master server
   hosts: database[0]
 
