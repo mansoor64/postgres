@@ -34,11 +34,12 @@
         owner: postgres
         group: postgres
         mode: 0755
-        state: {{ "file" if p.stat.exists else "touch" }}
+        state: touch
+      when: p.stat.exists == False
 
     - name: Making a backup of recovery file
       command: cp -p /var/lib/pgsql/{{ pgsql_version }}/data/recovery.done /var/lib/pgsql/{{ pgsql_version }}/backups/recovery.done.{{ansible_date_time.date}}.{{ansible_date_time.hour}}.{{ansible_date_time.minute}}.backup
-      when: p.stat.exists == False
+      when: p.stat.exists == True
 
     - name: Remove recovery file
       file:
@@ -61,11 +62,21 @@
         backrefs: yes
       notify:
        - start tower
-       - start postgres
 
     - name: Start Ansible Tower
       command: ansible-tower-service start
 
+
+  handlers:
+    - name: start tower
+      command: ansible-tower-service start
+
+
+- name: Start PostgreS
+  hosts: database
+  become: yes
+
+  tasks:
     - name: Get the current PostgreSQL Version
       import_role:
         name: pgsql_replication
@@ -76,12 +87,8 @@
         name: postgresql-{{ pgsql_version }}
         state: started
 
-
-  handlers:
-    - name: start tower
-      command: ansible-tower-service start
-
     - name: Start postgres
       command: /bin/systemctl start postgresql-{{ pgsql_version }}
+
 
 - include: pgsql_replication.yml
