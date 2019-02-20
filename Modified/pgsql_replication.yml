@@ -10,6 +10,9 @@
         patterns: recovery.conf
       register: recovery_conf_path
 
+    - name: Making a backup of recovery.conf
+      command: cp -p /var/lib/pgsql/{{ pgsql_version }}/data/recovery.conf /var/lib/pgsql/{{ pgsql_version }}/backups/recovery.conf.{{ansible_date_time.date}}.{{ansible_date_time.hour}}.{{ansible_date_time.minute}}.backup
+
     - name: Remove recovery.conf
       file:
         path: "{{ item.path }}"
