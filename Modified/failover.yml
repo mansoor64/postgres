@@ -1,0 +1,58 @@
+- name: Gather facts
+  hosts: all
+  become: yes
+
+- name: Failover PostgreSQL
+  hosts: database_replica
+  become: yes
+
+  tasks:
+    - name: Get the current PostgreSQL Version
+      import_role:
+        name: pgsql_replication
+        tasks_from: pgsql_version.yml
+
+    - name: Enable hot standby
+      lineinfile:
+        state: present
+        backup: true
+        dest: "{{ pgsqlrep_data_path }}/postgresql.conf"
+        regexp: '^#?hot_standby = \w+(\s+#.*)'
+        line: 'hot_standby = yes\1'
+        backrefs: true
+      become: true
+      become_user: postgres
+
+
+    - name: Promote secondary PostgreSQL server to primary
+      command: /usr/pgsql-{{ pgsql_version }}/bin/pg_ctl promote
+      become_user: postgres
+      environment:
+        PGDATA: /var/lib/pgsql/{{ pgsql_version }}/data
+      ignore_errors: yes
+
+- name: Update Ansible Tower database configuration
+  hosts: tower
+  become: yes
+
+  tasks:
+    - name:
+      import_role:
+        name: pgsql_replication
+
+    - name: Making a backup of postgres.py
+      archive:
+       path: /etc/tower/conf.d/postgres.py
+       dest: /etc/tower/conf.d/postgres.py.{{ansible_date_time.date}}.{{ansible_date_time.hour}}.{{ansible_date_time.minute}}.backup
+
+    - name: Update Tower postgres.py
+      lineinfile:
+        dest: /etc/tower/conf.d/postgres.py
+        regexp: "^(.*'HOST':)"
+        line: "\\1 '{{ hostvars[groups['database_replica'][0]].ansible_default_ipv4.address }}',"
+        backrefs: yes
+      notify: restart tower
+
+  handlers:
+    - name: restart tower
+      command: ansible-tower-service restart

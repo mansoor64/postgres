@@ -1,0 +1,8 @@
+[tower]
+169.195.104.186
+
+[database]
+169.195.104.212 pgsqlrep_role=master
+
+[database_replica]
+169.195.104.213 pgsqlrep_role=replica

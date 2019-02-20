@@ -1,0 +1,87 @@
+- name: Gather facts
+  hosts: all
+  become: yes
+
+- name: Stop Ansible Tower
+  hosts: tower
+  become: yes
+
+  tasks:
+    - name: Stop Ansible Tower
+      command: ansible-tower-service stop
+
+- name: Failback PostgreSQL
+  hosts: database
+  become: yes
+
+  tasks:
+    - name: Get the current PostgreSQL Version
+      import_role:
+        name: pgsql_replication
+        tasks_from: pgsql_version.yml
+
+    - name: Stop PostgreSQL
+      service:
+        name: postgresql-{{ pgsql_version }}
+        state: stopped
+
+    - stat: path=/var/lib/pgsql/{{ pgsql_version }}/data/recovery.done
+      register: p
+
+    - name: create empty recovery file if it doesn't exist
+      file:
+        path: /var/lib/pgsql/{{ pgsql_version }}/data/recovery.done
+        owner: postgres
+        group: postgres
+        mode: 0755
+        state: {{ "file" if p.stat.exists else "touch" }}
+
+    - name: Making a backup of recovery file
+      command: cp -p /var/lib/pgsql/{{ pgsql_version }}/data/recovery.done /var/lib/pgsql/{{ pgsql_version }}/backups/recovery.done.{{ansible_date_time.date}}.{{ansible_date_time.hour}}.{{ansible_date_time.minute}}.backup
+      when: p.stat.exists == False
+
+    - name: Remove recovery file
+      file:
+        path: /var/lib/pgsql/{{ pgsql_version }}/data//recovery.done
+        state: absent
+
+- name: Update Ansible Tower configuration
+  hosts: tower
+  become: yes
+
+  tasks:
+    - name: Making a backup of postgres.py
+      command: cp -p /etc/tower/conf.d/postgres.py /etc/tower/conf.d/postgres.py.{{ansible_date_time.date}}.{{ansible_date_time.hour}}.{{ansible_date_time.minute}}.backup
+
+    - name: Update Tower postgres.py
+      lineinfile:
+        dest: /etc/tower/conf.d/postgres.py
+        regexp: "^(.*'HOST':)"
+        line: "\\1 '{{ hostvars[groups['database'][0]].ansible_default_ipv4.address }}',"
+        backrefs: yes
+      notify:
+       - start tower
+       - start postgres
+
+    - name: Start Ansible Tower
+      command: ansible-tower-service start
+
+    - name: Get the current PostgreSQL Version
+      import_role:
+        name: pgsql_replication
+        tasks_from: pgsql_version.yml
+
+    - name: Start PostgreSQL
+      service:
+        name: postgresql-{{ pgsql_version }}
+        state: started
+
+
+  handlers:
+    - name: start tower
+      command: ansible-tower-service start
+
+    - name: Start postgres
+      command: /bin/systemctl start postgresql-{{ pgsql_version }}
+
+- include: pgsql_replication.yml
